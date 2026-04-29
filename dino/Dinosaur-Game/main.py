@@ -1,13 +1,31 @@
 import pygame
 import sys
 import random
+import os
 
+# Initialize Pygame
 pygame.init()
-screen = pygame.display.set_mode((1280, 720))
+pygame.mixer.init()
+
+# Constants
+SCREEN_WIDTH = 1280
+SCREEN_HEIGHT = 720
+FPS = 120
+
+# Setup display
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 clock = pygame.time.Clock()
 pygame.display.set_caption("Dino Game")
 
-game_font = pygame.font.Font("assets/PressStart2P-Regular.ttf", 24)
+# Get the directory where the script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+
+# Load font
+try:
+    game_font = pygame.font.Font(os.path.join(ASSETS_DIR, "PressStart2P-Regular.ttf"), 24)
+except:
+    game_font = pygame.font.Font(None, 24)
 
 # Classes
 
@@ -31,29 +49,31 @@ class Dino(pygame.sprite.Sprite):
         self.ducking_sprites = []
 
         self.running_sprites.append(pygame.transform.scale(
-            pygame.image.load("assets/Dino1.png"), (80, 100)))
+            pygame.image.load(os.path.join(ASSETS_DIR, "Dino1.png")), (80, 100)))
         self.running_sprites.append(pygame.transform.scale(
-            pygame.image.load("assets/Dino2.png"), (80, 100)))
+            pygame.image.load(os.path.join(ASSETS_DIR, "Dino2.png")), (80, 100)))
 
         self.ducking_sprites.append(pygame.transform.scale(
-            pygame.image.load(f"assets/DinoDucking1.png"), (110, 60)))
+            pygame.image.load(os.path.join(ASSETS_DIR, "DinoDucking1.png")), (110, 60)))
         self.ducking_sprites.append(pygame.transform.scale(
-            pygame.image.load(f"assets/DinoDucking2.png"), (110, 60)))
+            pygame.image.load(os.path.join(ASSETS_DIR, "DinoDucking2.png")), (110, 60)))
 
         self.x_pos = x_pos
         self.y_pos = y_pos
         self.current_image = 0
         self.image = self.running_sprites[self.current_image]
         self.rect = self.image.get_rect(center=(self.x_pos, self.y_pos))
-        self.velocity = 50
-        self.gravity = 4.5
+        self.jump_velocity = 0
+        self.gravity = 1.0
+        self.is_jumping = False
         self.ducking = False
+        self.ground_y = 360
 
     def jump(self):
-        jump_sfx.play()
-        if self.rect.centery >= 360:
-            while self.rect.centery - self.velocity > 40:
-                self.rect.centery -= 1
+        if not self.is_jumping and self.rect.centery >= self.ground_y:
+            jump_sfx.play()
+            self.is_jumping = True
+            self.jump_velocity = -25
 
     def duck(self):
         self.ducking = True
@@ -64,8 +84,15 @@ class Dino(pygame.sprite.Sprite):
         self.rect.centery = 360
 
     def apply_gravity(self):
-        if self.rect.centery <= 360:
-            self.rect.centery += self.gravity
+        if self.is_jumping or self.rect.centery < self.ground_y:
+            self.jump_velocity += self.gravity
+            self.rect.centery += self.jump_velocity
+            
+            # Land on ground
+            if self.rect.centery >= self.ground_y:
+                self.rect.centery = self.ground_y
+                self.is_jumping = False
+                self.jump_velocity = 0
 
     def update(self):
         self.animate()
@@ -90,7 +117,7 @@ class Cactus(pygame.sprite.Sprite):
         self.sprites = []
         for i in range(1, 7):
             current_sprite = pygame.transform.scale(
-                pygame.image.load(f"assets/cacti/cactus{i}.png"), (100, 100))
+                pygame.image.load(os.path.join(ASSETS_DIR, "cacti", f"cactus{i}.png")), (100, 100))
             self.sprites.append(current_sprite)
         self.image = random.choice(self.sprites)
         self.rect = self.image.get_rect(center=(self.x_pos, self.y_pos))
@@ -108,10 +135,10 @@ class Ptero(pygame.sprite.Sprite):
         self.sprites = []
         self.sprites.append(
             pygame.transform.scale(
-                pygame.image.load("assets/Ptero1.png"), (84, 62)))
+                pygame.image.load(os.path.join(ASSETS_DIR, "Ptero1.png")), (84, 62)))
         self.sprites.append(
             pygame.transform.scale(
-                pygame.image.load("assets/Ptero2.png"), (84, 62)))
+                pygame.image.load(os.path.join(ASSETS_DIR, "Ptero2.png")), (84, 62)))
         self.current_image = 0
         self.image = self.sprites[self.current_image]
         self.rect = self.image.get_rect(center=(self.x_pos, self.y_pos))
@@ -128,8 +155,6 @@ class Ptero(pygame.sprite.Sprite):
         self.image = self.sprites[int(self.current_image)]
 
 # Variables
-
-
 game_speed = 5
 jump_count = 10
 player_score = 0
@@ -138,30 +163,40 @@ obstacle_timer = 0
 obstacle_spawn = False
 obstacle_cooldown = 1000
 
-# Surfaces
+# Load surfaces
+try:
+    ground = pygame.image.load(os.path.join(ASSETS_DIR, "ground.png"))
+    ground = pygame.transform.scale(ground, (1280, 20))
+    cloud = pygame.image.load(os.path.join(ASSETS_DIR, "cloud.png"))
+    cloud = pygame.transform.scale(cloud, (200, 80))
+except pygame.error as e:
+    print(f"Error loading images: {e}")
+    pygame.quit()
+    sys.exit()
 
-ground = pygame.image.load("assets/ground.png")
-ground = pygame.transform.scale(ground, (1280, 20))
 ground_x = 0
 ground_rect = ground.get_rect(center=(640, 400))
-cloud = pygame.image.load("assets/cloud.png")
-cloud = pygame.transform.scale(cloud, (200, 80))
 
 # Groups
-
 cloud_group = pygame.sprite.Group()
 obstacle_group = pygame.sprite.Group()
 dino_group = pygame.sprite.GroupSingle()
-ptero_group = pygame.sprite.Group()
 
 # Objects
 dinosaur = Dino(50, 360)
 dino_group.add(dinosaur)
 
-# Sounds
-death_sfx = pygame.mixer.Sound("assets/sfx/lose.mp3")
-points_sfx = pygame.mixer.Sound("assets/sfx/100points.mp3")
-jump_sfx = pygame.mixer.Sound("assets/sfx/jump.mp3")
+# Load sounds
+try:
+    death_sfx = pygame.mixer.Sound(os.path.join(ASSETS_DIR, "sfx", "lose.mp3"))
+    points_sfx = pygame.mixer.Sound(os.path.join(ASSETS_DIR, "sfx", "100points.mp3"))
+    jump_sfx = pygame.mixer.Sound(os.path.join(ASSETS_DIR, "sfx", "jump.mp3"))
+except pygame.error as e:
+    print(f"Error loading sounds: {e}")
+    # Create dummy sounds if loading fails
+    death_sfx = pygame.mixer.Sound(buffer=bytes(100))
+    points_sfx = pygame.mixer.Sound(buffer=bytes(100))
+    jump_sfx = pygame.mixer.Sound(buffer=bytes(100))
 
 # Events
 CLOUD_EVENT = pygame.USEREVENT
@@ -176,9 +211,18 @@ def end_game():
     game_over_rect = game_over_text.get_rect(center=(640, 300))
     score_text = game_font.render(f"Score: {int(player_score)}", True, "black")
     score_rect = score_text.get_rect(center=(640, 340))
+    restart_text = game_font.render("Press SPACE to restart", True, "black")
+    restart_rect = restart_text.get_rect(center=(640, 380))
     screen.blit(game_over_text, game_over_rect)
     screen.blit(score_text, score_rect)
+    screen.blit(restart_text, restart_rect)
+
+
+def reset_game():
+    global game_speed, player_score, obstacle_timer
     game_speed = 5
+    player_score = 0
+    obstacle_timer = 0
     cloud_group.empty()
     obstacle_group.empty()
 
@@ -200,18 +244,19 @@ while True:
             cloud_group.add(current_cloud)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
-                dinosaur.jump()
-                if game_over:
+                if not game_over:
+                    dinosaur.jump()
+                else:
                     game_over = False
-                    game_speed = 5
-                    player_score = 0
+                    reset_game()
 
     screen.fill("white")
 
     # Collisions
-    if pygame.sprite.spritecollide(dino_group.sprite, obstacle_group, False):
+    if pygame.sprite.spritecollide(dino_group.sprite, obstacle_group, False, pygame.sprite.collide_mask):
+        if not game_over:
+            death_sfx.play()
         game_over = True
-        death_sfx.play()
     if game_over:
         end_game()
 
@@ -243,9 +288,6 @@ while True:
 
         cloud_group.update()
         cloud_group.draw(screen)
-
-        ptero_group.update()
-        ptero_group.draw(screen)
 
         dino_group.update()
         dino_group.draw(screen)
